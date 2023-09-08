@@ -58,24 +58,6 @@ int main(int argc, char *argv[])
         mpv_request_log_messages(mpvs[i], "debug");
     }
 
-    // mpv_handle *mpv = mpv_create();
-    // if (!mpv)
-    //     die("context init failed");
-
-    // mpv_handle *mpv2 = mpv_create();
-    // if (!mpv2)
-    //     die("context init 2 failed");
-
-    // // Some minor options can only be set before mpv_initialize().
-    // if (mpv_initialize(mpv) < 0)
-    //     die("mpv init failed");
-
-    // if (mpv_initialize(mpv2) < 0)
-    //     die("mpv2 init failed");
-
-    // mpv_request_log_messages(mpv, "debug");
-    // mpv_request_log_messages(mpv2, "debug");
-
     // Jesus Christ SDL, you suck!
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "no");
 
@@ -126,15 +108,6 @@ int main(int argc, char *argv[])
         if (mpv_render_context_create(&mpv_gls[i], mpvs[i], params) < 0)
             die("failed to initialize mpv GL context");
     }
-    
-
-    // mpv_render_context *mpv_gl;
-    // if (mpv_render_context_create(&mpv_gl, mpv, params) < 0)
-    //     die("failed to initialize mpv GL context");
-    
-    // mpv_render_context *mpv_gl2;
-    // if (mpv_render_context_create(&mpv_gl2, mpv2, params) < 0)
-    //     die("failed to initialize mpv GL 2 context");
 
     // We use events for thread-safe notification of the SDL main loop.
     // Generally, the wakeup callbacks (set further below) should do as least
@@ -161,22 +134,6 @@ int main(int argc, char *argv[])
         const char *cmd[] = {"loadfile", argv[i + 1], NULL};
         mpv_command_async(mpvs[i], 0, cmd);
     }
-
-    // mpv_set_wakeup_callback(mpv, on_mpv_events, NULL);
-    // mpv_set_wakeup_callback(mpv2, on_mpv_events, NULL);
-
-    // When there is a need to call mpv_render_context_update(), which can
-    // request a new frame to be rendered.
-    // (Separate from the normal event handling mechanism for the sake of
-    //  users which run OpenGL on a different thread.)
-    // mpv_render_context_set_update_callback(mpv_gl, on_mpv_render_update, NULL);
-    // mpv_render_context_set_update_callback(mpv_gl2, on_mpv_render_update, NULL);
-
-    // Play this file.
-    // const char *cmd[] = {"loadfile", argv[1], NULL};
-    // const char *cmd2[] = {"loadfile", argv[2], NULL};
-    // mpv_command_async(mpv, 0, cmd);
-    // mpv_command_async(mpv2, 0, cmd2);
 
     // setbuf(stdout, NULL);
 
@@ -205,12 +162,6 @@ int main(int argc, char *argv[])
         mpv_set_option_string(mpvs[i], "hr-seek-framedrop\0", "no");
         mpv_set_option_string(mpvs[i], "video-timing-offset\0", "0");
     }
-    
-    // mpv_set_option_string(mpv, "hr-seek-framedrop\0", "no");
-    // mpv_set_option_string(mpv2, "hr-seek-framedrop\0", "no");
-
-    // mpv_set_option_string(mpv, "video-timing-offset\0", "0");
-    // mpv_set_option_string(mpv2, "video-timing-offset\0", "0");
 
     while (1) {
         SDL_Event event;
@@ -220,8 +171,6 @@ int main(int argc, char *argv[])
         int redraws[N];
         for (int i=0; i < N; i++) redraws[i] = 0;
 
-        // int redraw = 0;
-        // int redraw2 = 0;
         switch (event.type) {
         case SDL_QUIT:
             goto done;
@@ -235,8 +184,6 @@ int main(int argc, char *argv[])
             if (event.key.keysym.sym == SDLK_SPACE) {
                 const char *cmd_pause[] = {"cycle", "pause", NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_pause);
-                // mpv_command_async(mpv, 0, cmd_pause);
-                // mpv_command_async(mpv2, 0, cmd_pause);
             }
             // Need to take a single screenshot from the framebuffer, or save 4 directly from mpv
             // if (event.key.keysym.sym == SDLK_s) {
@@ -255,8 +202,6 @@ int main(int argc, char *argv[])
                     NULL
                 };
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_back);
-                // mpv_command_async(mpv, 0, cmd_back);
-                // mpv_command_async(mpv2, 0, cmd_back);
             }
             if (event.key.keysym.sym == SDLK_RIGHT) {
                 const char *cmd_fwd[] = {
@@ -264,8 +209,6 @@ int main(int argc, char *argv[])
                     NULL
                 };
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_fwd);
-                // mpv_command_async(mpv, 0, cmd_fwd);
-                // mpv_command_async(mpv2, 0, cmd_fwd);
             }
             if (event.key.keysym.sym == SDLK_g) {
                 const char *cmd_gamma[] = {"vf",
@@ -273,8 +216,6 @@ int main(int argc, char *argv[])
                                          "format:gamma=linear",
                                          NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_gamma);
-                // mpv_command_async(mpv, 0, cmd_gamma);
-                // mpv_command_async(mpv2, 0, cmd_gamma);
             }
             if (event.key.keysym.sym == SDLK_b) {
                 const char *cmd_blur[] = {"vf",
@@ -282,32 +223,22 @@ int main(int argc, char *argv[])
                                          "gblur:sigma=32",
                                          NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_blur);
-                // mpv_command_async(mpv, 0, cmd_gamma);
-                // mpv_command_async(mpv2, 0, cmd_gamma);
             }
             if (event.key.keysym.sym == SDLK_r) {
                 const char *cmd_reset[] = {"seek", "0", "absolute+exact", NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_reset);
-                // mpv_command_async(mpv, 0, cmd_reset);
-                // mpv_command_async(mpv2, 0, cmd_reset);
             }
             if (event.key.keysym.sym == SDLK_j) {
                 const char *cmd_back_30[] = {"seek", "-30", "exact", NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_back_30);
-                // mpv_command_async(mpv, 0, cmd_back_30);
-                // mpv_command_async(mpv2, 0, cmd_back_30);
             }
             if (event.key.keysym.sym == SDLK_l) {
                 const char *cmd_fwd_30[] = {"seek", "30", "exact", NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_fwd_30);
-                // mpv_command_async(mpv, 0, cmd_fwd_30);
-                // mpv_command_async(mpv2, 0, cmd_fwd_30);
             }
             if (event.key.keysym.sym == SDLK_e) {
                 const char *seek_end[] = {"seek", "100", "absolute-percent+exact", NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, seek_end);
-                // mpv_command_async(mpv, 0, seek_end);
-                // mpv_command_async(mpv2, 0, seek_end);
             }
             if (event.key.keysym.sym == SDLK_z) {
                 // const char *cmd_zoom[] = {
@@ -318,7 +249,6 @@ int main(int argc, char *argv[])
                 // };
                 // mpv_command_async(mpv, 0, cmd_zoom);
                 for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-crop\0", "300x300+500+500\0");
-                // mpv_set_option_string(mpv, "video-crop\0", "300x300+500+500\0");
             }
 
             break;
@@ -332,35 +262,20 @@ int main(int argc, char *argv[])
                     if (flagss[i] & MPV_RENDER_UPDATE_FRAME)
                         redraws[i] = 1;
                 }
-
-                // uint64_t flags = mpv_render_context_update(mpv_gl);
-                // if (flags & MPV_RENDER_UPDATE_FRAME)
-                //     redraw = 1;
-                
-                // uint64_t flags2 = mpv_render_context_update(mpv_gl2);
-                // if (flags2 & MPV_RENDER_UPDATE_FRAME)
-                //     redraw2 = 1;
             }
             // Happens when at least 1 new event is in the mpv event queue.
             if (event.type == wakeup_on_mpv_events) {
                 // Handle all remaining mpv events.
                 while (1) {
                     mpv_event *mp_events[N];
-                    // mpv_event *mp_event, *mp_event2;
 
                     for (int i=0; i < N; i++) mp_events[i] = mpv_wait_event(mpvs[i], 0);
-
-                    // mp_event = mpv_wait_event(mpv, 0);
-                    // mp_event2 = mpv_wait_event(mpv2, 0);
 
                     bool no_more_events = true;
                     for (int i=0; i < N; i++) no_more_events &= (mp_events[i]->event_id == MPV_EVENT_NONE);
 
                     if (no_more_events)
                         break;
-
-                    // if (mp_event->event_id == MPV_EVENT_NONE && mp_event2->event_id == MPV_EVENT_NONE)
-                    //     break;
 
                     for (int i=0;i < N; i++) {
                         if (mp_events[i]->event_id == MPV_EVENT_LOG_MESSAGE) {
@@ -375,30 +290,6 @@ int main(int argc, char *argv[])
                         }
                         // printf("event: %s\n", mpv_event_name(mp_events[i]->event_id));
                     }
-
-                    // if (mp_event->event_id == MPV_EVENT_LOG_MESSAGE) {
-                    //     mpv_event_log_message *msg = mp_event->data;
-                    //     // Print log messages about DR allocations, just to
-                    //     // test whether it works. If there is more than 1 of
-                    //     // these, it works. (The log message can actually change
-                    //     // any time, so it's possible this logging stops working
-                    //     // in the future.)
-                    //     // if (strstr(msg->text, "DR image"))
-                    //     //     printf("log: %s", msg->text);
-                    // }
-                    // // printf("event: %s\n", mpv_event_name(mp_event->event_id));
-
-                    // if (mp_event2->event_id == MPV_EVENT_LOG_MESSAGE) {
-                    //     mpv_event_log_message *msg = mp_event2->data;
-                    //     // Print log messages about DR allocations, just to
-                    //     // test whether it works. If there is more than 1 of
-                    //     // these, it works. (The log message can actually change
-                    //     // any time, so it's possible this logging stops working
-                    //     // in the future.)
-                    //     // if (strstr(msg->text, "DR image"))
-                    //     //     printf("log: %s", msg->text);
-                    // }
-                    // // printf("event: %s\n", mpv_event_name(mp_event2->event_id));
                 }
             }
         }
@@ -432,54 +323,6 @@ int main(int argc, char *argv[])
         }
         }
 
-        // if (redraw) {
-        //     glBindFramebuffer(GL_FRAMEBUFFER, fbos[0]);
-        //     mpv_render_param params[] = {
-        //         // Specify the default framebuffer (0) as target. This will
-        //         // render onto the entire screen. If you want to show the video
-        //         // in a smaller rectangle or apply fancy transformations, you'll
-        //         // need to render into a separate FBO and draw it manually.
-        //         {MPV_RENDER_PARAM_OPENGL_FBO, &(mpv_opengl_fbo){
-        //             .fbo = fbos[0],
-        //             // .fbo = 0,
-        //             .w = w / 2,
-        //             .h = h,
-        //         }},
-        //         // Flip rendering (needed due to flipped GL coordinate system).
-        //         {MPV_RENDER_PARAM_FLIP_Y, &(int){1}},
-        //         {0}
-        //     };
-        //     // See render_gl.h on what OpenGL environment mpv expects, and
-        //     // other API details.
-        //     mpv_render_context_render(mpv_gl, params);
-
-        //     // glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        //     // glBlitFramebuffer(0, 0, w / 2, h, 0, 0, w/2, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-        // }
-        // if (redraw2) {
-        //     glBindFramebuffer(GL_FRAMEBUFFER, fbos[1]);
-        //     mpv_render_param params2[] = {
-        //         // Specify the default framebuffer (0) as target. This will
-        //         // render onto the entire screen. If you want to show the video
-        //         // in a smaller rectangle or apply fancy transformations, you'll
-        //         // need to render into a separate FBO and draw it manually.
-        //         {MPV_RENDER_PARAM_OPENGL_FBO, &(mpv_opengl_fbo){
-        //             .fbo = fbos[1],
-        //             .w = w / 2,
-        //             .h = h,
-        //         }},
-        //         // Flip rendering (needed due to flipped GL coordinate system).
-        //         {MPV_RENDER_PARAM_FLIP_Y, &(int){1}},
-        //         {0}
-        //     };
-        //     // See render_gl.h on what OpenGL environment mpv expects, and
-        //     // other API details.
-        //     mpv_render_context_render(mpv_gl2, params2);
-
-        //     // glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        //     // glBlitFramebuffer(0, 0, w / 2, h, w/2, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-        // }
-
         bool to_redraw_final = false;
         for (int i=0; i < N; i++) to_redraw_final = (to_redraw_final || redraws[i]);
         
@@ -493,12 +336,6 @@ int main(int argc, char *argv[])
                 int x = i / ncols, y = i % ncols;
                 glBlitFramebuffer(0, 0, w / ncols, h / nrows, x * w / ncols, y * h / nrows, (x + 1) * w / ncols, (y + 1) * h / nrows, GL_COLOR_BUFFER_BIT, GL_NEAREST);
             }
-
-            // glBindFramebuffer(GL_READ_FRAMEBUFFER, fbos[0]);
-            // glBlitFramebuffer(0, 0, w / 2, h, 0, 0, w/2, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
-            // glBindFramebuffer(GL_READ_FRAMEBUFFER, fbos[1]);
-            // glBlitFramebuffer(0, 0, w / 2, h, w/2, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
             
             SDL_GL_SwapWindow(window);
         }
@@ -508,11 +345,8 @@ done:
     // Destroy the GL renderer and all of the GL objects it allocated. If video
     // is still running, the video track will be deselected.
     for (int i=0; i < N; i++) mpv_render_context_free(mpv_gls[i]);
-    
-    // mpv_render_context_free(mpv_gl);
 
     for (int i=0; i < N; i++) mpv_terminate_destroy(mpvs[i]);
-    // mpv_terminate_destroy(mpv);
 
     printf("properly terminated\n");
     return 0;
