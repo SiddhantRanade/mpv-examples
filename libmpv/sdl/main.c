@@ -40,14 +40,14 @@ static void on_mpv_render_update(void *ctx)
     SDL_PushEvent(&event);
 }
 
-int main(int argc, char *argv[])
-{
-    if (argc != 5)
-        die("pass four media files as arguments");
+int main(int argc, char *argv[]) {
 
-    const int N = 4;
+    const int N_max = 4;
 
-    mpv_handle *mpvs[N];
+    int N = argc - 1;
+
+
+    mpv_handle *mpvs[N_max];
     for (int i = 0; i < N; ++i) {
         mpvs[i] = mpv_create();
         if (!mpvs[i])
@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
     // This makes mpv use the currently set GL context. It will use the callback
     // (passed via params) to resolve GL builtin functions, as well as extensions.
 
-    mpv_render_context *mpv_gls[N];
+    mpv_render_context *mpv_gls[N_max];
     for (size_t i = 0; i < N; i++) {
         if (mpv_render_context_create(&mpv_gls[i], mpvs[i], params) < 0)
             die("failed to initialize mpv GL context");
@@ -139,10 +139,10 @@ int main(int argc, char *argv[])
 
     glEnable(GL_TEXTURE_2D);
 
-    GLuint fbos[N];
+    GLuint fbos[N_max];
     glGenFramebuffers(N, fbos);
 
-    GLuint fbtex[N];
+    GLuint fbtex[N_max];
     glGenTextures(N, fbtex);
 
     int nrows = sqrt(N);
@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
         if (SDL_WaitEvent(&event) != 1)
             die("event loop error");
 
-        int redraws[N];
+        int redraws[N_max];
         for (int i=0; i < N; i++) redraws[i] = 0;
 
         switch (event.type) {
@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
             // Happens when there is new work for the render thread (such as
             // rendering a new video frame or redrawing it).
             if (event.type == wakeup_on_mpv_render_update) {
-                uint64_t flagss[N];
+                uint64_t flagss[N_max];
                 for (int i=0; i < N; i++) {
                     flagss[i] = mpv_render_context_update(mpv_gls[i]);
                     if (flagss[i] & MPV_RENDER_UPDATE_FRAME)
@@ -267,7 +267,7 @@ int main(int argc, char *argv[])
             if (event.type == wakeup_on_mpv_events) {
                 // Handle all remaining mpv events.
                 while (1) {
-                    mpv_event *mp_events[N];
+                    mpv_event *mp_events[N_max];
 
                     for (int i=0; i < N; i++) mp_events[i] = mpv_wait_event(mpvs[i], 0);
 
@@ -317,10 +317,7 @@ int main(int argc, char *argv[])
                 // See render_gl.h on what OpenGL environment mpv expects, and
                 // other API details.
                 mpv_render_context_render(mpv_gls[i], params);
-
-                // glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-                // glBlitFramebuffer(0, 0, w / 2, h, 0, 0, w/2, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-        }
+            }
         }
 
         bool to_redraw_final = false;
@@ -333,7 +330,7 @@ int main(int argc, char *argv[])
             for (int i=0; i < N; i++) {
                 glBindFramebuffer(GL_READ_FRAMEBUFFER, fbos[i]);
                 
-                int x = i / ncols, y = i % ncols;
+                int x = i % ncols, y = i / ncols;
                 glBlitFramebuffer(0, 0, w / ncols, h / nrows, x * w / ncols, y * h / nrows, (x + 1) * w / ncols, (y + 1) * h / nrows, GL_COLOR_BUFFER_BIT, GL_NEAREST);
             }
             
