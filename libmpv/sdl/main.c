@@ -64,11 +64,11 @@ int main(int argc, char *argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
         die("SDL init failed");
 
-    int h = 1000, w = 2000;
+    int h_in = 2160, w_in = 3840;
 
     SDL_Window *window =
         SDL_CreateWindow("hi", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                         w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN); // | SDL_WINDOW_FULLSCREEN);
+                         w_in, h_in, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_INPUT_GRABBED);
     if (!window)
         die("failed to create SDL window");
 
@@ -135,7 +135,7 @@ int main(int argc, char *argv[]) {
         mpv_command_async(mpvs[i], 0, cmd);
     }
 
-    // setbuf(stdout, NULL);
+    setbuf(stdout, NULL);
 
     glEnable(GL_TEXTURE_2D);
 
@@ -145,12 +145,17 @@ int main(int argc, char *argv[]) {
     GLuint fbtex[N_max];
     glGenTextures(N, fbtex);
 
-    int nrows = sqrt(N);
-    int ncols = N / nrows;
+    // int ncols = ceil(sqrt((float) N));
+    // int nrows = ceil(((float) N) / ncols);
+    int nrows = floor(sqrt((float) N));
+    int ncols = ceil(((float) N) / nrows);
+
+    int ndivs = fmax(nrows, ncols);
+
     for (int i=0; i < N; i++) {
         glBindFramebuffer(GL_FRAMEBUFFER, fbos[i]);
         glBindTexture(GL_TEXTURE_2D, fbtex[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w / ncols, h / nrows, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w_in / ncols, h_in / nrows, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -159,14 +164,32 @@ int main(int argc, char *argv[]) {
 
     for (int i=0; i < N; i++) {
         // Allow the video decoder to drop frames during seek, if these frames are before the seek target. If this is enabled, precise seeking can be faster, but if you're using video filters which modify timestamps or add new frames, it can lead to precise seeking skipping the target frame. This e.g. can break frame backstepping when deinterlacing is enabled.
-        mpv_set_option_string(mpvs[i], "hr-seek-framedrop\0", "no");
-        mpv_set_option_string(mpvs[i], "video-timing-offset\0", "0");
+        mpv_set_option_string(mpvs[i], "hr-seek-framedrop\0", "no\0");
+        mpv_set_option_string(mpvs[i], "video-timing-offset\0", "0\0");
+        // mpv_set_option_string(mpvs[i], "keep-open\0", "yes\0");
+        mpv_set_option_string(mpvs[i], "loop-file\0", "inf\0");
     }
+
+    bool mouseIsDown = false;
+    int mouseX, mouseY;
+    float deltax = 0, deltay = 0;
+    float zoom_level = 0;
+
+    const float zoom_adjust = 0.125;
+
+    int w, h;
+    SDL_GetWindowSize(window, &w, &h);
+
+    // float win_scale_x = ((float) w_in) / w;
+    // float win_scale_y = ((float) h_in) / h;
 
     while (1) {
         SDL_Event event;
         if (SDL_WaitEvent(&event) != 1)
             die("event loop error");
+
+        char pan_x_str[8], pan_y_str[8];
+        char zoom_level_str[8];
 
         int redraws[N_max];
         for (int i=0; i < N; i++) redraws[i] = 0;
@@ -185,7 +208,7 @@ int main(int argc, char *argv[]) {
                 const char *cmd_pause[] = {"cycle", "pause", NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_pause);
             }
-            // Need to take a single screenshot from the framebuffer, or save 4 directly from mpv
+            // Need to take a single screenshot from the framebuffer, or save N directly from mpv
             // if (event.key.keysym.sym == SDLK_s) {
             //     // Also requires MPV_RENDER_PARAM_ADVANCED_CONTROL if you want
             //     // screenshots to be rendered on GPU (like --vo=gpu would do).
@@ -224,7 +247,38 @@ int main(int argc, char *argv[]) {
                                          NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_blur);
             }
+            if (event.key.keysym.sym == SDLK_f) {
+                // load_files
+                for (size_t i = 0; i < N; i++) {
+                    // When normal mpv events are available.
+                    mpv_set_wakeup_callback(mpvs[i], on_mpv_events, NULL);
+
+                    // When there is a need to call mpv_render_context_update(), which can
+                    // request a new frame to be rendered.
+                    // (Separate from the normal event handling mechanism for the sake of
+                    //  users which run OpenGL on a different thread.)
+                    mpv_render_context_set_update_callback(mpv_gls[i], on_mpv_render_update, NULL);
+
+                    // Play this file.
+                    const char *cmd[] = {"loadfile", argv[i + 1], NULL};
+                    mpv_command_async(mpvs[i], 0, cmd);
+                }
+            }
             if (event.key.keysym.sym == SDLK_r) {
+                deltax = 0; deltay = 0;
+
+                sprintf(pan_x_str, "%.3f\0", deltax / w);
+                sprintf(pan_y_str, "%.3f\0", deltay / h);
+
+                for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-pan-x\0", pan_x_str);
+                for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-pan-y\0", pan_y_str);
+
+                zoom_level = 0;
+
+                sprintf(zoom_level_str, "%.3f\0", zoom_level);
+
+                for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-zoom\0", zoom_level_str);
+
                 const char *cmd_reset[] = {"seek", "0", "absolute+exact", NULL};
                 for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_reset);
             }
@@ -248,9 +302,106 @@ int main(int argc, char *argv[]) {
                 //     NULL
                 // };
                 // mpv_command_async(mpv, 0, cmd_zoom);
-                for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-crop\0", "300x300+500+500\0");
+                // for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-crop\0", "300x300+500+500\0");
+
+                // char *zoom_level_str;
+                // sprintf(zoom_level_str, "%d", zoom_level);
+
+                // for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-zoom\0", zoom_level_str);
             }
 
+            break;
+        case SDL_MOUSEWHEEL:
+            int64_t vid_w, vid_h;
+            int _err_code_w = mpv_get_property(mpvs[0], "width", MPV_FORMAT_INT64, &vid_w);
+            int _err_code_h = mpv_get_property(mpvs[0], "height", MPV_FORMAT_INT64, &vid_h);
+
+            float vid_aspect = (float) vid_w / vid_h;
+            float win_aspect = (float) w / ncols * nrows / h;
+
+            float aspect_h = 1, aspect_w = 1;
+
+            if (vid_aspect > win_aspect) aspect_h = (float) win_aspect / vid_aspect;
+            else aspect_w = (float) vid_aspect / win_aspect;
+
+            int x = (int) (mouseX) % (int) (w / ncols) - w / ncols / 2;
+            int y = (int) (mouseY) % (int) (h / nrows) - h / nrows / 2;
+
+            printf("aspect_h: %f, aspect_w: %f\n", aspect_h, aspect_w);
+            printf("mouseX: %d, mouseY: %d\n", mouseX, mouseY);
+
+            if(event.wheel.y > 0) // scroll up
+            {
+                zoom_level -= zoom_adjust;
+
+                deltax = (deltax - x) / pow(2, zoom_adjust) + x;
+                deltay = (deltay - y) / pow(2, zoom_adjust) + y;
+            }
+            else if(event.wheel.y < 0) // scroll down
+            {
+                zoom_level += zoom_adjust;
+
+                deltax = (deltax - x) * pow(2, zoom_adjust) + x;
+                deltay = (deltay - y) * pow(2, zoom_adjust) + y;
+            }
+
+            if(event.wheel.x > 0) // scroll right
+            {
+                // ...
+            }
+            else if(event.wheel.x < 0) // scroll left
+            {
+                // ...
+            }
+
+            sprintf(zoom_level_str, "%.3f\0", zoom_level);
+            for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-zoom\0", zoom_level_str);
+
+            sprintf(pan_x_str, "%.3f\0", deltax / w / pow(2, zoom_level) * ncols / aspect_w);
+            sprintf(pan_y_str, "%.3f\0", deltay / h / pow(2, zoom_level) * nrows / aspect_h);
+
+            for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-pan-x\0", pan_x_str);
+            for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-pan-y\0", pan_y_str);
+
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+            if (event.button.button == SDL_BUTTON_LEFT) {
+                mouseIsDown = true;
+
+                mouseX = event.button.x;
+                mouseY = event.button.y;
+            }
+            break;
+        case SDL_MOUSEBUTTONUP:
+            if (event.button.button == SDL_BUTTON_LEFT) {
+                mouseIsDown = false;
+            // don't copy, create a function
+
+                deltax += event.button.x - mouseX;
+                deltay += event.button.y - mouseY;
+
+                mouseX = event.button.x;
+                mouseY = event.button.y;
+                sprintf(pan_x_str, "%.3f\0", deltax / w / pow(2, zoom_level) * ndivs);
+                sprintf(pan_y_str, "%.3f\0", deltay / h / pow(2, zoom_level) * ndivs);
+
+                for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-pan-x\0", pan_x_str);
+                for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-pan-y\0", pan_y_str);
+            }
+            break;
+        case SDL_MOUSEMOTION:
+            if (mouseIsDown) {
+                deltax += event.button.x - mouseX;
+                deltay += event.button.y - mouseY;
+
+                sprintf(pan_x_str, "%.3f\0", deltax / w / pow(2, zoom_level) * ndivs);
+                sprintf(pan_y_str, "%.3f\0", deltay / h / pow(2, zoom_level) * ndivs);
+
+                for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-pan-x\0", pan_x_str);
+                for (int i=0; i < N; i++) mpv_set_option_string(mpvs[i], "video-pan-y\0", pan_y_str);
+            }
+            mouseX = event.motion.x;
+            mouseY = event.motion.y;
             break;
         default:
             // Happens when there is new work for the render thread (such as
@@ -293,7 +444,9 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
-        int w, h;
+
+        // TODO: use property eof-reached to reset
+
         SDL_GetWindowSize(window, &w, &h);
 
         for (int i=0; i < N; i++) {
@@ -326,14 +479,12 @@ int main(int argc, char *argv[]) {
         if (to_redraw_final) {
 
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-
             for (int i=0; i < N; i++) {
                 glBindFramebuffer(GL_READ_FRAMEBUFFER, fbos[i]);
                 
-                int x = i % ncols, y = i / ncols;
-                glBlitFramebuffer(0, 0, w / ncols, h / nrows, x * w / ncols, y * h / nrows, (x + 1) * w / ncols, (y + 1) * h / nrows, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+                int cc = i % ncols, rr = i / ncols;
+                glBlitFramebuffer(0, 0, w / ncols, h / nrows, cc * w / ncols, rr * h / nrows, (cc + 1) * w / ncols, (rr + 1) * h / nrows, GL_COLOR_BUFFER_BIT, GL_NEAREST);
             }
-            
             SDL_GL_SwapWindow(window);
         }
     }
