@@ -183,6 +183,9 @@ int main(int argc, char *argv[]) {
     // float win_scale_x = ((float) w_in) / w;
     // float win_scale_y = ((float) h_in) / h;
 
+    const char *cmd_pause[] = {"cycle", "pause", NULL};
+    for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_pause);
+
     while (1) {
         SDL_Event event;
         if (SDL_WaitEvent(&event) != 1)
@@ -250,15 +253,6 @@ int main(int argc, char *argv[]) {
             if (event.key.keysym.sym == SDLK_f) {
                 // load_files
                 for (size_t i = 0; i < N; i++) {
-                    // When normal mpv events are available.
-                    mpv_set_wakeup_callback(mpvs[i], on_mpv_events, NULL);
-
-                    // When there is a need to call mpv_render_context_update(), which can
-                    // request a new frame to be rendered.
-                    // (Separate from the normal event handling mechanism for the sake of
-                    //  users which run OpenGL on a different thread.)
-                    mpv_render_context_set_update_callback(mpv_gls[i], on_mpv_render_update, NULL);
-
                     // Play this file.
                     const char *cmd[] = {"loadfile", argv[i + 1], NULL};
                     mpv_command_async(mpvs[i], 0, cmd);
@@ -453,10 +447,6 @@ int main(int argc, char *argv[]) {
             if (redraws[i]) {
                 glBindFramebuffer(GL_FRAMEBUFFER, fbos[i]);
                 mpv_render_param params[] = {
-                    // Specify the default framebuffer (0) as target. This will
-                    // render onto the entire screen. If you want to show the video
-                    // in a smaller rectangle or apply fancy transformations, you'll
-                    // need to render into a separate FBO and draw it manually.
                     {MPV_RENDER_PARAM_OPENGL_FBO, &(mpv_opengl_fbo){
                         .fbo = fbos[i],
                         // .fbo = 0,
