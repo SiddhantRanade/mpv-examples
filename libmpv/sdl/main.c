@@ -15,6 +15,11 @@
 #include <math.h>
 #include <stdbool.h>
 
+#include <time.h>
+#include <stdint.h>
+
+// #define TIME_UTC 1; // Not sure why this is needed
+
 static Uint32 wakeup_on_mpv_render_update, wakeup_on_mpv_events;
 
 static void die(const char *msg)
@@ -38,6 +43,20 @@ static void on_mpv_render_update(void *ctx)
 {
     SDL_Event event = {.type = wakeup_on_mpv_render_update};
     SDL_PushEvent(&event);
+}
+
+double difftimespec(const struct timespec *ts1, const struct timespec *ts0) {
+  return (ts1->tv_sec - ts0->tv_sec)
+      + (ts1->tv_nsec - ts0->tv_nsec) / 1000000000.0;
+}
+
+inline void print_time_since(struct timespec *ts, char* txt) {
+    struct timespec ts_now;
+    // clock_gettime(&ts_now, CLOCK_MONOTONIC);
+    clock_gettime(CLOCK_MONOTONIC, &ts_now);
+
+    printf(txt);
+    printf(" at %f ms.\n", difftimespec(&ts_now, ts) * 1000);
 }
 
 int main(int argc, char *argv[]) {
@@ -186,16 +205,22 @@ int main(int argc, char *argv[]) {
     const char *cmd_pause[] = {"cycle", "pause", NULL};
     for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_pause);
 
+    int redraws[N_max];
+    for (int i=0; i < N; i++) redraws[i] = 0;
+
+    struct timespec ts;
     while (1) {
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        printf("starting loop\n");
+        
         SDL_Event event;
         if (SDL_WaitEvent(&event) != 1)
             die("event loop error");
 
+        print_time_since(&ts, "got event");
+
         char pan_x_str[8], pan_y_str[8];
         char zoom_level_str[8];
-
-        int redraws[N_max];
-        for (int i=0; i < N; i++) redraws[i] = 0;
 
         switch (event.type) {
         case SDL_QUIT:
@@ -321,9 +346,6 @@ int main(int argc, char *argv[]) {
             int x = (int) (mouseX) % (int) (w / ncols) - w / ncols / 2;
             int y = (int) (mouseY) % (int) (h / nrows) - h / nrows / 2;
 
-            printf("aspect_h: %f, aspect_w: %f\n", aspect_h, aspect_w);
-            printf("mouseX: %d, mouseY: %d\n", mouseX, mouseY);
-
             if(event.wheel.y > 0) // scroll up
             {
                 zoom_level -= zoom_adjust;
@@ -401,16 +423,21 @@ int main(int argc, char *argv[]) {
             // Happens when there is new work for the render thread (such as
             // rendering a new video frame or redrawing it).
             if (event.type == wakeup_on_mpv_render_update) {
+                print_time_since(&ts, "started wakeup_on_mpv_render_update");
+
                 uint64_t flagss[N_max];
                 for (int i=0; i < N; i++) {
                     flagss[i] = mpv_render_context_update(mpv_gls[i]);
                     if (flagss[i] & MPV_RENDER_UPDATE_FRAME)
                         redraws[i] = 1;
                 }
+                print_time_since(&ts, "finished wakeup_on_mpv_render_update");
             }
             // Happens when at least 1 new event is in the mpv event queue.
             if (event.type == wakeup_on_mpv_events) {
                 // Handle all remaining mpv events.
+                // bool restart_playback = false;
+                print_time_since(&ts, "started wakeup_on_mpv_events");
                 while (1) {
                     mpv_event *mp_events[N_max];
 
@@ -435,16 +462,41 @@ int main(int argc, char *argv[]) {
                         }
                         // printf("event: %s\n", mpv_event_name(mp_events[i]->event_id));
                     }
+                    // for (int i=0;i < N; i++) {
+                    //     if (mp_events[i]->event_id == MPV_EVENT_END_FILE) {
+                    //         restart_playback = true;
+                    //     }
+                    // }
                 }
+                // if (restart_playback) {
+                //     printf("Restarting playback\n");
+                //     for (int i=0; i < N; i++) {
+                //         const char *cmd_load[] = {"loadfile", argv[i + 1], NULL};
+                //         mpv_command_async(mpvs[i], 0, cmd_load);
+                //     }
+                //     const char *cmd_reset[] = {"seek", "0", "absolute+exact", NULL};
+                //     const char *cmd_pause[] = {"set", "pause", "no", NULL};
+                //     for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_reset);
+                //     for (int i=0; i < N; i++) mpv_command_async(mpvs[i], 0, cmd_pause);
+                // }
+                // printf("Finished wakeup_on_mpv_events at %d", time(NULL) - start);
+                print_time_since(&ts, "finished wakeup_on_mpv_events");
             }
         }
+
+        
+        print_time_since(&ts, "finished events");
 
         // TODO: use property eof-reached to reset
 
         SDL_GetWindowSize(window, &w, &h);
 
-        for (int i=0; i < N; i++) {
-            if (redraws[i]) {
+        bool to_redraw_final = true;
+        for (int i=0; i < N; i++) to_redraw_final = (to_redraw_final && redraws[i]);
+        
+        if (to_redraw_final) {
+            print_time_since(&ts, "started redraws");
+            for (int i=0; i < N; i++) {
                 glBindFramebuffer(GL_FRAMEBUFFER, fbos[i]);
                 mpv_render_param params[] = {
                     {MPV_RENDER_PARAM_OPENGL_FBO, &(mpv_opengl_fbo){
@@ -460,23 +512,25 @@ int main(int argc, char *argv[]) {
                 // See render_gl.h on what OpenGL environment mpv expects, and
                 // other API details.
                 mpv_render_context_render(mpv_gls[i], params);
-            }
-        }
 
-        bool to_redraw_final = false;
-        for (int i=0; i < N; i++) to_redraw_final = (to_redraw_final || redraws[i]);
-        
-        if (to_redraw_final) {
-
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-            for (int i=0; i < N; i++) {
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
                 glBindFramebuffer(GL_READ_FRAMEBUFFER, fbos[i]);
                 
                 int cc = i % ncols, rr = i / ncols;
                 glBlitFramebuffer(0, 0, w / ncols, h / nrows, cc * w / ncols, rr * h / nrows, (cc + 1) * w / ncols, (rr + 1) * h / nrows, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+                redraws[i] = 0;
             }
             SDL_GL_SwapWindow(window);
+
+            // char* eof_strs[N_max];
+            // for (int i=0; i < N; ++i) {
+            //     eof_strs[i] = mpv_get_property_string(mpvs[i], "eof-reached");
+            //     printf("EOF %d: %s\n", i, eof_strs[i]);
+            // }
+            print_time_since(&ts, "finished redraws");
         }
+        print_time_since(&ts, "finished loop");
     }
 done:
 
